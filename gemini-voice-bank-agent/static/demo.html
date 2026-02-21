@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Voice Banking Demo</title>
+    <style>
+      body { font-family: Arial, sans-serif; max-width: 780px; margin: 24px auto; }
+      button { margin-right: 8px; }
+      textarea, pre, input { width: 100%; margin-top: 8px; }
+      #action { background: #f5f5f5; padding: 8px; border-radius: 6px; }
+    </style>
+  </head>
+  <body>
+    <h1>Gemini Voice Bank Agent</h1>
+    <p>Session: <code id="sid"></code></p>
+
+    <button id="startBtn">Start Mic</button>
+    <button id="stopBtn">Stop Mic</button>
+
+    <h3>Live Transcript</h3>
+    <pre id="live"></pre>
+
+    <h3>Type fallback</h3>
+    <input id="typedInput" placeholder="Type a command" />
+    <button id="sendTyped">Send</button>
+
+    <h3>Assistant</h3>
+    <pre id="assistant"></pre>
+
+    <h3>UI Action</h3>
+    <pre id="action"></pre>
+
+    <script src="/static/demo.js"></script>
+  </body>
+</html>
