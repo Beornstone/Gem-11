@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import Response
+from pydantic import BaseModel
 
+from .eleven_client import ElevenSTTClient, ElevenTTSClient
 from .gemini_client import GeminiIntentClient
 from .schema import (
     CancelIntent,
@@ -22,19 +25,39 @@ from .session_store import session_store
 router = APIRouter()
 
 
+class TTSRequest(BaseModel):
+    text: str
+
+
 def get_client() -> GeminiIntentClient:
     return GeminiIntentClient()
+
+
+def get_stt_client() -> ElevenSTTClient:
+    return ElevenSTTClient()
+
+
+def get_tts_client() -> ElevenTTSClient:
+    return ElevenTTSClient()
 
 
 @router.post("/api/agent/turn", response_model=TurnResponse)
 def agent_turn(req: TurnRequest) -> TurnResponse:
     state = session_store.get(req.session_id)
-    client = get_client()
-    intent, debug = client.classify_intent(
-        transcript=req.transcript,
-        payees_allowed=state.payees_allowed,
-        pending_transfer=state.pending_transfer,
-    )
+    try:
+        client = get_client()
+        intent, debug = client.classify_intent(
+            transcript=req.transcript,
+            payees_allowed=state.payees_allowed,
+            pending_transfer=state.pending_transfer,
+        )
+    except Exception:
+        intent = ClarifyIntent(
+            intent="CLARIFY",
+            assistant_say="I didn't catch that. Please rephrase your request.",
+            choices=None,
+        )
+        debug = {"error": "gemini_failed"}
 
     ui_action = None
     assistant_say = intent.assistant_say
@@ -90,3 +113,25 @@ def agent_turn(req: TurnRequest) -> TurnResponse:
         ui_action=ui_action,
         debug=debug,
     )
+
+
+@router.post("/api/voice/stt")
+def voice_stt(audio: UploadFile = File(...)) -> dict[str, str]:
+    try:
+        transcript = get_stt_client().transcribe(
+            audio_bytes=audio.file.read(),
+            filename=audio.filename or "audio.webm",
+            content_type=audio.content_type or "audio/webm",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"STT upstream failure: {exc}") from exc
+    return {"transcript": transcript}
+
+
+@router.post("/api/voice/tts")
+def voice_tts(req: TTSRequest) -> Response:
+    try:
+        audio_bytes = get_tts_client().synthesize(req.text)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"TTS upstream failure: {exc}") from exc
+    return Response(content=audio_bytes, media_type="audio/mpeg")

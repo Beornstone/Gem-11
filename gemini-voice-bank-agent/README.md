@@ -9,6 +9,21 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 export GEMINI_API_KEY=...
+export GEMINI_MODEL=gemini-2.5-flash
+export ELEVEN_API_KEY=...
+export ELEVEN_VOICE_ID=...
+uvicorn src.main:app --reload --port 8000
+```
+
+Open http://localhost:8000/demo
+
+## Run (Gemini + Eleven)
+
+```bash
+export GEMINI_API_KEY=...
+export GEMINI_MODEL=gemini-2.5-flash
+export ELEVEN_API_KEY=...
+export ELEVEN_VOICE_ID=...
 uvicorn src.main:app --reload --port 8000
 ```
 

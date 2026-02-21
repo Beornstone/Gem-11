@@ -3,5 +3,6 @@ uvicorn
 pydantic
 httpx
 python-dotenv
+python-multipart
 google-genai
 pytest

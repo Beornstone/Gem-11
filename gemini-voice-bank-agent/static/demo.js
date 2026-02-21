@@ -6,6 +6,28 @@ const assistant = document.getElementById("assistant");
 const action = document.getElementById("action");
 const typedInput = document.getElementById("typedInput");
 
+let currentAudio;
+
+async function playAssistantAudio(text) {
+  if (!text?.trim()) return;
+  const res = await fetch("/api/voice/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) return;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+
+  if (currentAudio) {
+    currentAudio.pause();
+    URL.revokeObjectURL(currentAudio.src);
+  }
+  currentAudio = new Audio(url);
+  currentAudio.onended = () => URL.revokeObjectURL(url);
+  currentAudio.play();
+}
+
 async function sendTranscript(text) {
   if (!text.trim()) return;
   const res = await fetch("/api/agent/turn", {
@@ -16,9 +38,7 @@ async function sendTranscript(text) {
   const data = await res.json();
   assistant.textContent = data.assistant_say;
   action.textContent = JSON.stringify(data.ui_action, null, 2);
-  if ("speechSynthesis" in window) {
-    window.speechSynthesis.speak(new SpeechSynthesisUtterance(data.assistant_say));
-  }
+  await playAssistantAudio(data.assistant_say);
 }
 
 document.getElementById("sendTyped").addEventListener("click", () => {
@@ -26,29 +46,53 @@ document.getElementById("sendTyped").addEventListener("click", () => {
   typedInput.value = "";
 });
 
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (!SpeechRecognition) {
-  live.textContent = "Web Speech API unavailable. Use typed fallback.";
-  document.getElementById("startBtn").disabled = true;
-  document.getElementById("stopBtn").disabled = true;
-} else {
-  const rec = new SpeechRecognition();
-  rec.continuous = true;
-  rec.interimResults = true;
+let recorder;
+let mediaStream;
 
-  rec.onresult = (event) => {
-    let interim = "";
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const t = event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        sendTranscript(t);
-      } else {
-        interim += t;
-      }
-    }
-    live.textContent = interim;
-  };
+async function transcribeChunk(blob) {
+  if (!blob || blob.size === 0) return;
+  const form = new FormData();
+  form.append("audio", blob, "chunk.webm");
 
-  document.getElementById("startBtn").onclick = () => rec.start();
-  document.getElementById("stopBtn").onclick = () => rec.stop();
+  const sttRes = await fetch("/api/voice/stt", {
+    method: "POST",
+    body: form,
+  });
+
+  if (!sttRes.ok) {
+    live.textContent = "Mic transcription unavailable. Use typed fallback.";
+    return;
+  }
+
+  const data = await sttRes.json();
+  const transcript = (data.transcript || "").trim();
+  if (!transcript || transcript === "(ambient noise)") {
+    return;
+  }
+
+  live.textContent = transcript;
+  await sendTranscript(transcript);
 }
+
+const startBtn = document.getElementById("startBtn");
+const stopBtn = document.getElementById("stopBtn");
+
+startBtn.onclick = async () => {
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recorder = new MediaRecorder(mediaStream, { mimeType: "audio/webm" });
+    recorder.ondataavailable = (event) => {
+      transcribeChunk(event.data);
+    };
+    recorder.start(4000);
+    live.textContent = "Listening...";
+  } catch (err) {
+    live.textContent = "Microphone unavailable. Use typed fallback.";
+  }
+};
+
+stopBtn.onclick = () => {
+  if (recorder && recorder.state !== "inactive") recorder.stop();
+  if (mediaStream) mediaStream.getTracks().forEach((track) => track.stop());
+  live.textContent = "Stopped.";
+};
