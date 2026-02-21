@@ -1,3 +1,4 @@
+import httpx
 from fastapi.testclient import TestClient
 
 from src.main import app
@@ -55,3 +56,40 @@ def test_check_balance_and_cancel():
     )
     rc = client.post("/api/agent/turn", json={"session_id": "s2", "transcript": "cancel"})
     assert rc.json()["ui_action"]["type"] == "GO_HOME"
+
+
+def test_voice_stt_returns_502_on_upstream_failure(monkeypatch):
+    monkeypatch.setenv("ELEVEN_API_KEY", "test-key")
+    client = TestClient(app)
+
+    def fake_post(*args, **kwargs):
+        return httpx.Response(status_code=500, request=httpx.Request("POST", "https://api.elevenlabs.io"))
+
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    res = client.post(
+        "/api/voice/stt",
+        files={"audio": ("sample.webm", b"bytes", "audio/webm")},
+    )
+
+    assert res.status_code == 502
+    assert "STT upstream failure" in res.json()["detail"]
+
+
+def test_voice_tts_returns_audio_mpeg(monkeypatch):
+    monkeypatch.setenv("ELEVEN_API_KEY", "test-key")
+    monkeypatch.setenv("ELEVEN_VOICE_ID", "voice-123")
+    client = TestClient(app)
+
+    def fake_post(*args, **kwargs):
+        return httpx.Response(
+            status_code=200,
+            content=b"mp3-bytes",
+            request=httpx.Request("POST", "https://api.elevenlabs.io"),
+        )
+
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+    res = client.post("/api/voice/tts", json={"text": "hello"})
+
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("audio/mpeg")
+    assert res.content == b"mp3-bytes"

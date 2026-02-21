@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from typing import Any
 
 from google import genai
 from pydantic import TypeAdapter, ValidationError
 
+from .config import get_settings
 from .schema import ClarifyIntent, Intent
 
 
@@ -17,11 +17,11 @@ intent_adapter = TypeAdapter(Intent)
 
 class GeminiIntentClient:
     def __init__(self) -> None:
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
+        settings = get_settings()
+        if not settings.gemini_api_key:
             raise RuntimeError("GEMINI_API_KEY is required")
-        self.client = genai.Client(api_key=api_key)
-        self.primary_model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        self.client = genai.Client(api_key=settings.gemini_api_key)
+        self.primary_model = settings.gemini_model
         self.fallback_model = "gemini-1.5-flash"
 
     def classify_intent(
@@ -73,7 +73,7 @@ class GeminiIntentClient:
             "CLARIFY": {
                 "intent": "CLARIFY",
                 "assistant_say": "string",
-                "choices": ["string"]
+                "choices": ["optional", "array", "of", "strings"],
             },
             "HELP": {"intent": "HELP", "assistant_say": "string"},
         }
